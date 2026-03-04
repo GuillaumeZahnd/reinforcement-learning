@@ -20,7 +20,7 @@ if __name__ == "__main__":
     env = ImgObsWrapper(env)
 
     # Custom wrapper for assigning intermediate rewards and masking futile actions
-    env = EnvironmentWrapper(env=env)
+    env = EnvironmentWrapper(env=env, print_rewards=True)
 
     # Agent
     agent_name = "MaskablePPO_MLP"
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         episode_len += 1
 
         if terminated:
-            print_green(f"Episode finished successfully in {episode_len} steps.")
+            print_green(f"✨ Episode finished successfully in {episode_len} steps.")
             obs, _ = env.reset()
             episode_len = 0
 

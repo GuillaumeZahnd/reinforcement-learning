@@ -17,7 +17,7 @@ if __name__ == "__main__":
     env = gym.make(puzzle_name, render_mode="rgb_array")
 
     # Custom wrapper for assigning intermediate rewards and masking futile actions
-    env = EnvironmentWrapper(env=env)
+    env = EnvironmentWrapper(env=env, print_rewards=False)
 
     # Standard observation wrapper
     env = ImgObsWrapper(env)
@@ -35,13 +35,13 @@ if __name__ == "__main__":
         batch_size=256,        # Number of samples per batch (nb_batches = n_steps / batch_size)
         n_epochs=10,           # Number of iterations during the optimization process
         gamma=0.99,            # Discount factor (a reward r obtained at time-step t has discounted value r*gamma^t)
-        ent_coef=0.05,         # Entropy coefficient (higher values encourage more exploration)
+        ent_coef=0.01,         # Entropy coefficient (higher values encourage more exploration)
         device="cpu",          # For small problems, the bottleneck is the transfer time, not the computation time
         verbose=1              # Print training metrics to the console
     )
 
     # Train
-    model.learn(total_timesteps=1e5)
+    model.learn(total_timesteps=1e6)
 
     # Save
     checkpoint_dir = Path("checkpoints")

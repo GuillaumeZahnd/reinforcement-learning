@@ -8,7 +8,7 @@ from utils import action_name2idx, print_green
 
 class EnvironmentWrapper(gym.Wrapper):
     """Environment wrapper for reward shaping and action masking."""
-    def __init__(self, env: gym.Env) -> None:
+    def __init__(self, env: gym.Env, print_rewards: bool) -> None:
         super().__init__(env)
 
         # Intermediate rewards tracking (awarded once, on the first occurence of the event)
@@ -16,6 +16,7 @@ class EnvironmentWrapper(gym.Wrapper):
         self.door_opened = False
         self.door_reached = False
         self.intermediate_reward = 0.2
+        self.print_rewards = print_rewards
 
     def step(self, action):
         """
@@ -62,33 +63,38 @@ class EnvironmentWrapper(gym.Wrapper):
 
         breadcrumbs = 0.0
 
+        grid = self.env.unwrapped.grid
+        front_pos = self.env.unwrapped.front_pos
+        tile_in_front = grid.get(*front_pos)
+
+        unwrapped = self.env.unwrapped
+        agent_pos = unwrapped.agent_pos
+        tile_under_agent = unwrapped.grid.get(*agent_pos)
+
         # Reward for picking up the key
         if not self.key_pickedup:
             carrying = self.env.unwrapped.carrying
             if isinstance(carrying, Key):
                 breadcrumbs += self.intermediate_reward
                 self.key_pickedup = True
-                print_green("[REWARD] The agent picked up the key.")
+                if self.print_rewards:
+                    print_green("[REWARD] The agent picked up the key.")
 
         # Reward for opening the door
         if not self.door_opened:
-            grid = self.env.unwrapped.grid
-            front_pos = self.env.unwrapped.front_pos
-            front_tile = grid.get(*front_pos)
-            if isinstance(front_tile, Door) and front_tile.is_open:
+            if isinstance(tile_in_front, Door) and tile_in_front.is_open:
                 breadcrumbs += self.intermediate_reward
                 self.door_opened = True
-                print_green("[REWARD] The agent opened the door.")
+                if self.print_rewards:
+                    print_green("[REWARD] The agent opened the door.")
 
         # Reward for reaching the door
         if not self.door_reached:
-            unwrapped = self.env.unwrapped
-            agent_position = unwrapped.agent_pos
-            tile_under_agent = unwrapped.grid.get(*agent_position)
             if isinstance(tile_under_agent, Door):
                 breadcrumbs += self.intermediate_reward
                 self.door_reached = True
-                print_green("[REWARD] The agent reached the door.")
+                if self.print_rewards:
+                    print_green("[REWARD] The agent reached the door.")
 
         return breadcrumbs
 
@@ -110,35 +116,34 @@ class EnvironmentWrapper(gym.Wrapper):
         # Retrieve the tile located in front of the agent
         grid = self.env.unwrapped.grid
         front_pos = self.env.unwrapped.front_pos
-        front_tile = grid.get(*front_pos)
+        tile_in_front = grid.get(*front_pos)
 
         # Flag to indicate whether the agent is carrying anything
         carrying = self.env.unwrapped.carrying
 
-        # Pickup
-        if not isinstance(front_tile, Key):
+        # Penalty for Pickup
+        if not isinstance(tile_in_front, Key):
             mask[action_name2idx(name="pickup")] = False
 
-        # Toggle
+        # Penalty for Toggle
         mask[action_name2idx(name="toggle")] = False
         if (
-            isinstance(front_tile, Door) and
-            front_tile.is_locked and
-            carrying
+            isinstance(tile_in_front, Door) and
+            tile_in_front.is_locked and
+            isinstance(carrying, Key)
         ):
             mask[action_name2idx(name="toggle")] = True
 
-        # Drop
+        # Penalty for Drop
         mask[action_name2idx(name="drop")] = False
 
-        # Forward
+        # Penalty for Forward
         mask[action_name2idx(name="forward")] = False
         if (
-            front_tile is None or
-            (isinstance(front_tile, Door) and front_tile.is_open) or
-            isinstance(front_tile, Goal)
+            tile_in_front is None or
+            (isinstance(tile_in_front, Door) and tile_in_front.is_open) or
+            isinstance(tile_in_front, Goal)
         ):
             mask[action_name2idx(name="forward")] = True
-
         return mask
 
