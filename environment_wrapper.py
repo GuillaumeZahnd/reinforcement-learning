@@ -1,0 +1,144 @@
+import gymnasium as gym
+from minigrid.core.actions import Actions
+from minigrid.core.world_object import Door, Goal, Door, Wall, Key
+import numpy as np
+
+from utils import action_name2idx, print_green
+
+
+class EnvironmentWrapper(gym.Wrapper):
+    """Environment wrapper for reward shaping and action masking."""
+    def __init__(self, env: gym.Env) -> None:
+        super().__init__(env)
+
+        # Intermediate rewards tracking (awarded once, on the first occurence of the event)
+        self.key_pickedup = False
+        self.door_opened = False
+        self.door_reached = False
+        self.intermediate_reward = 0.2
+
+    def step(self, action):
+        """
+        Execute a single step in the environment and apply reward shaping.
+
+        Args:
+            action: Action index selected by the agent.
+
+        Returns:
+            Tuple containing (observation, reward, terminated, truncated, info).
+        """
+        obs, reward, terminated, truncated, info = self.env.step(action)
+
+        reward += self.leave_breadcrumbs(obs=obs)
+        return obs, reward, terminated, truncated, info
+
+
+    def reset(self, seed: int=None, options: dict[str, any]=None) -> tuple[np.ndarray, dict[str, any]]:
+        """
+        Reset the environment and the flags for reward tracking.
+
+        Returns:
+            Initial observation.
+            Information dictionary.
+        """
+        self.key_pickedup = False
+        self.door_opened = False
+        self.door_reached = False
+        self.door_sequence = np.zeros(3)
+        obs, info = super().reset(seed=seed, options=options)
+        return obs, info
+
+
+    def leave_breadcrumbs(self, obs: np.ndarray) -> float:
+        """
+        Logic for awarding intermediate rewards ("bread crumbs") based on agent progression.
+
+        Args:
+            obs: Current observation array from the environment.
+
+        Returns:
+            Total breadcrumb reward value for the current step.
+        """
+
+        breadcrumbs = 0.0
+
+        # Reward for picking up the key
+        if not self.key_pickedup:
+            carrying = self.env.unwrapped.carrying
+            if isinstance(carrying, Key):
+                breadcrumbs += self.intermediate_reward
+                self.key_pickedup = True
+                print_green("[REWARD] The agent picked up the key.")
+
+        # Reward for opening the door
+        if not self.door_opened:
+            grid = self.env.unwrapped.grid
+            front_pos = self.env.unwrapped.front_pos
+            front_tile = grid.get(*front_pos)
+            if isinstance(front_tile, Door) and front_tile.is_open:
+                breadcrumbs += self.intermediate_reward
+                self.door_opened = True
+                print_green("[REWARD] The agent opened the door.")
+
+        # Reward for reaching the door
+        if not self.door_reached:
+            unwrapped = self.env.unwrapped
+            agent_position = unwrapped.agent_pos
+            tile_under_agent = unwrapped.grid.get(*agent_position)
+            if isinstance(tile_under_agent, Door):
+                breadcrumbs += self.intermediate_reward
+                self.door_reached = True
+                print_green("[REWARD] The agent reached the door.")
+
+        return breadcrumbs
+
+
+    def action_masks(self) -> np.ndarray:
+        """
+        Generate a boolean mask for the current state to prevent the agent from taking futile actions.
+        This method is used by the MaskablePPO algorithm.
+
+        Returns:
+            Boolean array, of shape (nb_actions).
+        """
+
+        # Boolean mask to authorize (1) or prevent (0) actions
+        # Possible actions are: 0 (left), 1 (right), 2 (forward), 3 (pickup), 4 (drop), 5 (toggle), 6 (done)
+        nb_actions = len(Actions)
+        mask = np.ones(nb_actions, dtype=bool)
+
+        # Retrieve the tile located in front of the agent
+        grid = self.env.unwrapped.grid
+        front_pos = self.env.unwrapped.front_pos
+        front_tile = grid.get(*front_pos)
+
+        # Flag to indicate whether the agent is carrying anything
+        carrying = self.env.unwrapped.carrying
+
+        # Pickup
+        if not isinstance(front_tile, Key):
+            mask[action_name2idx(name="pickup")] = False
+
+        # Toggle
+        mask[action_name2idx(name="toggle")] = False
+        if (
+            isinstance(front_tile, Door) and
+            front_tile.is_locked and
+            carrying
+        ):
+            mask[action_name2idx(name="toggle")] = True
+
+        # Drop
+        mask[action_name2idx(name="drop")] = False
+
+        # Forward
+        mask[action_name2idx(name="forward")] = False
+        if (
+            front_tile is None or
+            (isinstance(front_tile, Door) and front_tile.is_open) or
+            isinstance(front_tile, Goal)
+        ):
+            mask[action_name2idx(name="forward")] = True
+
+        return mask
+

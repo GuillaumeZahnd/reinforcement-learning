@@ -1,0 +1,13 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+gymnasium = {version="==1.2.3", index="pypi"}
+minigrid = {version="==3.0.0", index="pypi"}
+stable-baselines3 = {version="==2.7.1", index="pypi"}
+sb3-contrib = {version="==2.7.1", index="pypi"}
+
+[requires]
+python_version = "3.12"
