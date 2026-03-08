@@ -16,6 +16,7 @@ class EnvironmentWrapper(gym.Wrapper):
         self.door_opened = False
         self.door_reached = False
         self.intermediate_reward = 0.2
+        self.time_penalty_per_step = 1e-3
         self.print_rewards = print_rewards
 
     def step(self, action):
@@ -31,6 +32,7 @@ class EnvironmentWrapper(gym.Wrapper):
         obs, reward, terminated, truncated, info = self.env.step(action)
 
         reward += self.leave_breadcrumbs(obs=obs)
+        reward -= self.time_penalty_per_step
         return obs, reward, terminated, truncated, info
 
 
